@@ -43,6 +43,12 @@ extra-source-files: changelog
                     cbits/crc32.h cbits/inffast.h cbits/inflate.h
                     cbits/trees.h cbits/deflate.h cbits/inffixed.h
                     cbits/inftrees.h cbits/zutil.h cbits/gzguts.h
+                    -- cloudflare zlib C sources
+                    cbits-cloudflare/adler32_simd.h  cbits-cloudflare/gzguts.h         cbits-cloudflare/inftrees.h
+                    cbits-cloudflare/chunkcopy.h     cbits-cloudflare/inffast_chunk.h  cbits-cloudflare/trees.h
+                    cbits-cloudflare/crc32.h         cbits-cloudflare/inffast.h        cbits-cloudflare/zconf.h
+                    cbits-cloudflare/crc32_simd.h    cbits-cloudflare/inffixed.h       cbits-cloudflare/zlib.h
+                    cbits-cloudflare/deflate.h       cbits-cloudflare/inflate.h        cbits-cloudflare/zutil.h
                     -- test data files
                     test/data/bad-crc.gz test/data/custom-dict.zlib
                     test/data/custom-dict.zlib-dict test/data/hello.gz
@@ -71,6 +77,12 @@ flag bundled-c-zlib
   manual:      True
   description: Use the bundled zlib C sources. Requires pkg-config to be False.
                For windows, this is the default.
+
+flag bundled-c-zlib-cloudflare
+  default:     False
+  manual:      True
+  description: Use the bundled cloudflare zlib C sources. Requires pkg-config to be False.
+               This may be faster than the usual madler/zlib
 
 
 library
@@ -108,18 +120,30 @@ library
     pkgconfig-depends: zlib
   else
     -- don't use pkg-config
-    if !os(windows) && !flag(bundled-c-zlib) && !impl(ghcjs) && !os(ghcjs)
+    if !os(windows) && !flag(bundled-c-zlib) && !flag(bundled-c-zlib-cloudflare) && !impl(ghcjs) && !os(ghcjs)
       -- Normally we use the the standard system zlib.
       extra-libraries: z
     else
-      -- However for the benefit of users of Windows (which does not have zlib
-      -- by default) we bundle a complete copy of the C sources of zlib-1.2.11
-      c-sources:   cbits/adler32.c cbits/compress.c cbits/crc32.c
-                   cbits/deflate.c cbits/infback.c
-                   cbits/inffast.c cbits/inflate.c cbits/inftrees.c
-                   cbits/trees.c cbits/uncompr.c cbits/zutil.c
-      include-dirs:  cbits
-      install-includes: zlib.h zconf.h
+      if flag(bundled-c-zlib-cloudflare)
+        c-sources:  cbits-cloudflare/adler32.c       cbits-cloudflare/gzclose.c  cbits-cloudflare/inffast_chunk.c
+                    cbits-cloudflare/adler32_simd.c  cbits-cloudflare/gzlib.c    cbits-cloudflare/inflate.c
+                    cbits-cloudflare/compress.c      cbits-cloudflare/gzread.c   cbits-cloudflare/inftrees.c
+                    cbits-cloudflare/crc32.c         cbits-cloudflare/gzwrite.c  cbits-cloudflare/trees.c
+                    cbits-cloudflare/crc32_simd.c    cbits-cloudflare/infback.c  cbits-cloudflare/uncompr.c
+                    cbits-cloudflare/deflate.c       cbits-cloudflare/inffast.c  cbits-cloudflare/zutil.c
+        include-dirs:  cbits-cloudflare
+        install-includes: zlib.h zconf.h
+        -- TODO properly
+        cc-options: -DHAS_PCLMUL -mpclmul -DHAS_SSE42 -msse4.2 -DADLER32_SIMD_SSSE3 -mssse3 -DINFLATE_CHUNK_SIMD_SSE2 -msse2 -DINFLATE_CHUNK_READ_64LE -O3  -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN
+      else
+        -- However for the benefit of users of Windows (which does not have zlib
+        -- by default) we bundle a complete copy of the C sources of zlib-1.2.11
+        c-sources:   cbits/adler32.c cbits/compress.c cbits/crc32.c
+                     cbits/deflate.c cbits/infback.c
+                     cbits/inffast.c cbits/inflate.c cbits/inftrees.c
+                     cbits/trees.c cbits/uncompr.c cbits/zutil.c
+        include-dirs:  cbits
+        install-includes: zlib.h zconf.h
 
 test-suite tests
   type: exitcode-stdio-1.0
